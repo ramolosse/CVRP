@@ -1,0 +1,20 @@
+# Environnement virtuel
+.venv/
+
+# Cache Python
+__pycache__/
+*.py[cod]
+
+# Outils
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Environnement et secrets
+.env
+
+# Éditeurs et système
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
