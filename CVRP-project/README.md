@@ -81,7 +81,7 @@ Si vous avez installé [`uv`](https://github.com/astral-sh/uv) :
 3. **Installer les dépendances** :
    ```bash
    pip install -r <(python -c "import tomli; ...") # ou directement :
-   pip install numpy pandas matplotlib pulp vrplib ipykernel requests
+   pip install numpy pandas matplotlib "pulp[cbc]" highspy vrplib ipykernel requests
    ```
 
 ---
@@ -134,6 +134,31 @@ Pour lancer la comparaison globale de tous les algorithmes sur les instances :
 | **Algorithme Génétique** | Métaheuristique | [`algorithms/genetic_algorithm.py`](file:///C:/Users/ramol/OneDrive/Bureau/CESI%20Ann%C3%A9e%203/Bloc%20Algorithmique/Projet_Algorithmique/CVRP-project/algorithms/genetic_algorithm.py) | Recherche globale par population, croisements (ex: OX) et mutations |
 | **Recherche Tabou** | Métaheuristique | [`algorithms/tabu_search.py`](file:///C:/Users/ramol/OneDrive/Bureau/CESI%20Ann%C3%A9e%203/Bloc%20Algorithmique/Projet_Algorithmique/CVRP-project/algorithms/tabu_search.py) | Échappement aux optima locaux via une liste tabou des mouvements récents |
 
+### Représentation commune (`common.py`)
+
+- Les sommets sont numérotés de `0` à `n`, le **dépôt est toujours `0`**.
+- Une solution est une **liste de tournées**, chaque tournée étant la liste des clients dans l'ordre, **sans le dépôt** : `[[3, 1, 2], [4, 5]]` = `0→3→1→2→0` puis `0→4→5→0` (même format que les fichiers `.sol`).
+- Fonctions disponibles : `load_instance`, `load_solution`, `random_instance`, `sub_instance`, `route_cost`, `solution_cost`, `check_solution` / `is_feasible`, `gap`, `plot_solution`.
+- Les distances `EUC_2D` sont arrondies à l'entier le plus proche (convention CVRPLIB), ce qui redonne exactement les coûts des fichiers `.sol`.
+
+### PLNE + Branch and Bound (`algorithms/plne.py`)
+
+```python
+from common import load_instance
+from algorithms.plne import branch_and_bound, solve_with_cbc
+
+inst = load_instance("data/E-n13-k4.vrp")
+res = branch_and_bound(inst, time_limit=60)   # notre Branch and Bound
+print(res.summary())                          # coût, borne inférieure, gap, nœuds, temps
+ref = solve_with_cbc(inst, time_limit=60)     # même PLNE résolu par CBC (référence)
+```
+
+- `formulation="two_index"` (défaut) : modèle compact `x_ij`, `u_i` (MTZ relevé), sans symétrie entre camions.
+- `formulation="vehicle_index"` : modèle du Livrable 1 (`x_ijk`, `y_ik`, `z_k`, `u_ik`), avec la contrainte de charge F corrigée (`"vehicle_index_original"` reproduit la version d'origine, qui interdit les camions pleins).
+- `strategy="best_first"` ou `"depth_first"`, `node_limit`, et `initial_routes` pour démarrer avec la solution d'une métaheuristique.
+- Le résultat donne toujours une **borne inférieure** et une **borne supérieure** : si le temps est dépassé, `res.gap` majore l'écart à l'optimum.
+- Tests : `python tests/test_plne.py`. Démonstration commentée : `plne_branch_and_bound.ipynb`.
+
 ---
 
 ## 📦 Bibliothèques Principales
@@ -143,4 +168,6 @@ Pour lancer la comparaison globale de tous les algorithmes sur les instances :
 - **[Matplotlib](https://matplotlib.org/)** : Visualisation graphique des réseaux, des clients et des tournées des camions.
 - **[VRPLIB](https://github.com/leonlan/vrplib)** : Parsing standardisé des fichiers d'instances `.vrp`.
 - **[PuLP](https://coin-or.github.io/pulp/)** : Modélisation et résolution du programme linéaire en nombres entiers (PLNE).
+- **[HiGHS / highspy](https://highs.dev/)** : Résolution des relaxations linéaires dans le Branch and Bound (avec démarrage à chaud).
+- ⚠️ Depuis PuLP 4, le solveur CBC n'est plus inclus : il faut l'extra `pulp[cbc]` (déjà dans `pyproject.toml`), sinon PuLP n'a aucun solveur.
 - **[IPyKernel](https://ipython.org/)** : Exécution du notebook `main.ipynb`.
