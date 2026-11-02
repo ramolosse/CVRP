@@ -111,7 +111,26 @@ Ouvrez [`main.ipynb`](file:///C:/Users/ramol/OneDrive/Bureau/CESI%20Ann%C3%A9e%2
 
 > Dans VS Code, veillez à sélectionner le noyau Python situé dans `.venv` (`Python 3 (.venv)`).
 
-### 3. Exécution des Benchmarks (une fois les algorithmes implémentés)
+### 3. Utiliser Hill Climbing
+Le module `common.py` utilise `vrplib.read_instance` pour charger les sections
+`NODE_COORD_SECTION`, `DEMAND_SECTION` et `DEPOT_SECTION` d'une instance CVRPLIB/TSPLIB,
+ainsi que sa matrice de distances. Par exemple :
+
+```python
+from algorithms.hill_climbing import hill_climbing
+
+resultat = hill_climbing("data/A-n32-k5.vrp")
+print("Distance totale :", resultat["cost"])
+for numero, tournee in enumerate(resultat["routes"], start=1):
+    print(f"Camion {numero} :", tournee)
+```
+
+`routes` donne les clients visités par chaque camion; le dépôt est ajouté au
+départ et au retour lors du calcul du coût. Les distances `EUC_2D` suivent
+l'arrondi entier TSPLIB. Le résultat est une solution heuristique : elle est
+faisable, mais n'est pas garantie optimale.
+
+### 4. Exécution des Benchmarks (une fois les algorithmes implémentés)
 Pour lancer la comparaison globale de tous les algorithmes sur les instances :
 
 - Avec `uv` :

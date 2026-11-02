@@ -8,6 +8,7 @@ dependencies = [
     "highspy>=1.11.0",
     "ipykernel>=7.4.0",
     "matplotlib>=3.11.2",
+    "notebook>=7.6.3",
     "numpy>=2.5.4",
     "pandas>=3.1.0",
     "pulp[cbc]>=4.2.0",
