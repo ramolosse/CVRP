@@ -1,5 +1,5 @@
-"""Algorithmes de résolution CVRP."""
+"""Méthodes de résolution du CVRP retenues dans le projet.
 
-from .hill_climbing import hill_climbing, run_hill_climbing
-
-__all__ = ["hill_climbing", "run_hill_climbing"]
+Importer les modules explicitement, par exemple ``algorithms.plne`` ou
+``algorithms.genetic_algorithm``.
+"""

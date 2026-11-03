@@ -1,16 +1,11 @@
 """Algorithme génétique pour le CVRP, compatible avec Python 3.9+.
-Installation : pip install numpy vrplib
-Modifier les paramètres ci-dessous, puis lancer python cvrp_genetic_algorithm.py.
+L’instance est chargée par le code appelant puis transmise à ``solve(instance)``.
 Un dépôt, une capacité homogène et des demandes positives ou nulles.
 Les fenêtres de temps et les contraintes de durée ne sont pas prises en charge.
 Le décodage utilise un Split glouton séquentiel, sans programmation dynamique.
-Le coût du fichier .sol sert de référence ; son optimalité n’est pas démontrée ici.
 """
 
 # ======================== PARAMÈTRES UTILISATEUR ========================
-INSTANCE_PATH = "../data/A-n60-k9.vrp"
-SOLUTION_PATH = "../data/A-n60-k9.sol"
-OUTPUT_PATH = "../results/cvrp_ga_result2.csv"
 POPULATION_SIZE = 120
 MAX_GENERATIONS = 1000
 MAX_TIME_SECONDS = 30.0           # Recherche seule, initialisation de la population comprise.
@@ -21,10 +16,6 @@ MUTATION_PROBABILITY = 0.25
 TOURNAMENT_SIZE = 3
 ELITE_SIZE = 4
 RANDOM_SEED = 42
-MAX_VEHICLES = None              # None : champ VEHICLES, sinon flotte non limitée.
-# Le suffixe '-k' du nom de fichier ne définit pas automatiquement la flotte.
-ROUND_EUC_2D = True              # Convention CVRPLIB : floor(distance + 0.5).
-# Choisir False si l’objectif utilise les distances euclidiennes non arrondies.
 # =================================================================
 
 import csv
@@ -35,19 +26,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
 
-import numpy as np
-import vrplib
 
-
-@dataclass
-class Problem:
-    name: str
-    distance: np.ndarray
-    demand: np.ndarray
-    capacity: float
-    depot: int
-    customers: List[int]
-    max_vehicles: int
+from common import (
+    DEPOT, Instance, check_solution, gap as common_gap, route_cost, route_load,
+    solution_cost,
+)
 
 
 @dataclass
@@ -88,42 +71,6 @@ def validate_parameters():
         raise ValueError("Operator probabilities must be in [0, 1].")
 
 
-def read_problem(path):
-    """Lit une instance CVRP ; vrplib utilise un indice de dépôt commençant à zéro."""
-    data = vrplib.read_instance(str(path))
-    if str(data.get("type", "CVRP")).upper() != "CVRP":
-        raise ValueError("Only CVRP instances are supported.")
-    if any(key in data for key in ("time_window", "backhaul", "pickup", "distance")):
-        raise ValueError("Extra routing constraints are not supported by this solver.")
-    depots = np.asarray(data["depot"], dtype=int)
-    if len(depots) != 1:
-        raise ValueError("Exactly one depot is required.")
-    demand = np.asarray(data["demand"], dtype=float)
-    distance = np.asarray(data["edge_weight"], dtype=float)
-    n = len(demand)
-    depot = int(depots[0])
-    capacity = float(data["capacity"])
-    if n < 2 or not 0 <= depot < n or distance.shape != (n, n):
-        raise ValueError("Invalid dimensions or depot index.")
-    if not np.all(np.isfinite(distance)) or np.any(distance < 0):
-        raise ValueError("Distances must be finite and nonnegative.")
-    if not np.all(np.isfinite(demand)) or np.any(demand < 0):
-        raise ValueError("Demands must be finite and nonnegative.")
-    if not math.isfinite(capacity) or capacity <= 0 or demand[depot] != 0:
-        raise ValueError("Capacity must be positive and depot demand must be zero.")
-    if np.any(demand > capacity):
-        raise ValueError("A customer's demand exceeds vehicle capacity.")
-    if ROUND_EUC_2D and data.get("edge_weight_type") == "EUC_2D":
-        distance = np.floor(distance + 0.5)
-    customers = [i for i in range(n) if i != depot]
-    limit = MAX_VEHICLES if MAX_VEHICLES is not None else data.get("vehicles", n - 1)
-    if isinstance(limit, bool) or int(limit) != limit or limit < 1:
-        raise ValueError("The vehicle limit must be a positive integer.")
-    limit = min(int(limit), n - 1)
-    if demand.sum() > limit * capacity + 1e-9:
-        raise ValueError("Total demand exceeds total fleet capacity.")
-    return Problem(str(data.get("name", Path(path).stem)), distance, demand,
-                   capacity, depot, customers, limit)
 
 
 # ==================== INITIALISATION ET ÉVALUATION ====================
@@ -148,29 +95,29 @@ def greedy_split(order, problem, deadline):
     routes, route, load = [], [], 0.0
     for customer in order:
         check_time(deadline)
-        demand = float(problem.demand[customer])
+        demand = float(problem.demands[customer])
         if demand > problem.capacity + 1e-9:
             return None
         if route and load + demand > problem.capacity + 1e-9:
             routes.append(route)
-            if len(routes) >= problem.max_vehicles:
+            if len(routes) >= problem.n_vehicles:
                 return None
             route, load = [], 0.0
         route.append(customer)
         load += demand
     if route:
         routes.append(route)
-    return routes if len(routes) <= problem.max_vehicles else None
+    return routes if len(routes) <= problem.n_vehicles else None
 
 
 def calculate_route_cost(route, problem, deadline):
     """Calcule la distance d’une route, départ et retour au dépôt compris."""
-    total, previous = 0.0, problem.depot
+    total, previous = 0.0, DEPOT
     for customer in route:
         check_time(deadline)
-        total += problem.distance[previous, customer]
+        total += problem.distances[previous, customer]
         previous = customer
-    return float(total + problem.distance[previous, problem.depot])
+    return float(total + problem.distances[previous, DEPOT])
 
 
 def calculate_fitness(order, problem, deadline):
@@ -197,12 +144,12 @@ def evaluate_individual(order, problem, deadline):
 
 def create_initial_order(problem, rng, deadline, nearest_neighbor=False):
     """Crée une permutation aléatoire ou une permutation par plus proche voisin."""
-    order = problem.customers[:]
+    order = list(problem.customers)
     if nearest_neighbor:
-        order, remaining, previous = [], set(order), problem.depot
+        order, remaining, previous = [], set(order), DEPOT
         while remaining:
             check_time(deadline)
-            customer = min(remaining, key=lambda x: (problem.distance[previous, x], x))
+            customer = min(remaining, key=lambda x: (problem.distances[previous, x], x))
             order.append(customer)
             remaining.remove(customer)
             previous = customer
@@ -382,44 +329,25 @@ def solve(problem):
 
 
 def validate_solution(best, problem):
-    """Vérifie les visites, les capacités, le nombre de véhicules et le coût total."""
-    flat = [customer for route in best.routes for customer in route]
-    if sorted(flat) != sorted(problem.customers):
-        raise RuntimeError("Each customer must occur exactly once, without depot visits.")
-    if len(best.routes) > problem.max_vehicles:
-        raise RuntimeError("Vehicle limit exceeded.")
-    total = 0.0
-    for route in best.routes:
-        if not route or sum(problem.demand[x] for x in route) > problem.capacity + 1e-9:
-            raise RuntimeError("Empty or overloaded route.")
-        closed = [problem.depot] + route + [problem.depot]
-        total += sum(problem.distance[a, b] for a, b in zip(closed, closed[1:]))
+    """Valide la solution avec les fonctions communes du projet."""
+    errors = check_solution(problem, best.routes)
+    if errors:
+        raise RuntimeError("Invalid solution: " + "; ".join(errors))
+    total = solution_cost(problem, best.routes)
     if not math.isclose(total, best.cost, rel_tol=1e-9, abs_tol=1e-7):
         raise RuntimeError("Objective mismatch.")
 
 
-def read_reference_cost(path):
-    """Lit le champ Cost du fichier .sol sans utiliser ses routes pour guider la recherche."""
-    solution = vrplib.read_solution(str(path))
-    if "cost" not in solution:
-        raise ValueError("The .sol file must contain a Cost field.")
-    try:
-        cost = float(solution["cost"])
-    except (TypeError, ValueError) as error:
-        raise ValueError("The reference cost must be numeric.") from error
-    if not math.isfinite(cost) or cost < 0:
-        raise ValueError("The reference cost must be finite and nonnegative.")
-    return cost
 
 
 def calculate_gap(best_cost, reference_cost):
     """Calcule le Gap en pourcentage ; renvoie None si le ratio est indéfini."""
-    if best_cost is None or reference_cost == 0:
+    if best_cost is None or reference_cost is None or reference_cost == 0:
         return None
-    return 100.0 * (best_cost - reference_cost) / reference_cost
+    return common_gap(best_cost, reference_cost)
 
 
-def write_and_print_result(best, stats, problem, reference_cost):
+def write_and_print_result(best, stats, problem, reference_cost, output_path):
     """Enregistre les résultats au format CSV, puis affiche le bilan et les routes."""
     gap = calculate_gap(None if best is None else best.cost, reference_cost)
     parameters = {key: value for key, value in globals().items() if key.isupper()}
@@ -429,7 +357,7 @@ def write_and_print_result(best, stats, problem, reference_cost):
         "best_cost": None if best is None else best.cost,
         "reference_cost": reference_cost,
         "gap_percent": gap,
-        "vehicle_limit": problem.max_vehicles,
+        "vehicle_limit": problem.n_vehicles,
         "vehicles_used": None if best is None else len(best.routes),
         "capacity": problem.capacity,
         "node_numbering": "1-based VRPLIB node IDs; depot included at both ends",
@@ -440,18 +368,14 @@ def write_and_print_result(best, stats, problem, reference_cost):
     if best is not None:
         validate_solution(best, problem)
         for index, route in enumerate(best.routes, 1):
-            closed = [problem.depot] + route + [problem.depot]
+            closed = [DEPOT] + route + [DEPOT]
             result["routes"].append({
                 "vehicle": index,
                 "nodes": [x + 1 for x in closed],
-                "load": float(sum(problem.demand[x] for x in route)),
-                "distance": float(sum(problem.distance[a, b]
-                                      for a, b in zip(closed, closed[1:]))),
+                "load": float(route_load(problem, route)),
+                "distance": float(route_cost(problem, route)),
             })
-    output = Path(OUTPUT_PATH).expanduser()
-    input_paths = [Path(INSTANCE_PATH).expanduser(), Path(SOLUTION_PATH).expanduser()]
-    if any(output.resolve() == path.resolve() for path in input_paths):
-        raise ValueError("Output must not overwrite an input file.")
+    output = Path(output_path).expanduser()
     output.parent.mkdir(parents=True, exist_ok=True)
     # Un tableau rectangulaire unique regroupe bilan, routes, historique et paramètres.
     fields = ["record_type", "instance", "status", "best_cost", "reference_cost",
@@ -480,7 +404,7 @@ def write_and_print_result(best, stats, problem, reference_cost):
     print(f"Stop reason: {stats['stop_reason']}")
     print(f"Completed generations: {stats['completed_generations']}")
     print(f"Search time: {stats['search_seconds']:.3f} s")
-    print(f"Reference cost (.sol): {reference_cost:.6f}")
+    print(f"Reference cost: {reference_cost if reference_cost is not None else 'N/A'}")
     if gap is None:
         print("Gap: N/A (no feasible solution or zero reference cost)")
     else:
@@ -499,14 +423,3 @@ def write_and_print_result(best, stats, problem, reference_cost):
     return result
 
 
-def main():
-    """Charge les fichiers, lance la recherche et enregistre les résultats comparatifs."""
-    validate_parameters()
-    problem = read_problem(Path(INSTANCE_PATH).expanduser())
-    reference_cost = read_reference_cost(Path(SOLUTION_PATH).expanduser())
-    best, stats = solve(problem)
-    write_and_print_result(best, stats, problem, reference_cost)
-
-
-if __name__ == "__main__":
-    main()
