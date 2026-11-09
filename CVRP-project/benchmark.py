@@ -29,10 +29,10 @@ DEFAULT_INSTANCE_NAMES = [
 ]
 EXPERIMENT_SEEDS = (42, 123, 456, 789, 1024)
 GA_MAX_GENERATIONS = 1000
-GA_POPULATION_SIZE = 120
+GA_POPULATION_SIZE = 30
 GA_MUTATION_PROBABILITY = 0.25
 GA_CROSSOVER_PROBABILITY = 0.90
-GA_STAGNATION_GENERATIONS = 150
+GA_STAGNATION_GENERATIONS = 40
 GA_TIME_LIMITS_BY_SIZE = ((35, 5.0), (55, 8.0), (float("inf"), 12.0))
 GA_MULTI_SEED_TIME_LIMIT = 3.0
 PLNE_GA_COMPARISON_MAX_CLIENTS = 30
@@ -64,7 +64,7 @@ def ga_time_limit_for_instance(instance):
 def run_ga(instance, max_time=None, max_gen=GA_MAX_GENERATIONS, seed=42,
            pop_size=GA_POPULATION_SIZE, mut_prob=GA_MUTATION_PROBABILITY,
            cx_prob=GA_CROSSOVER_PROBABILITY, stagnation=GA_STAGNATION_GENERATIONS):
-    """Exécute le GA avec paramètres explicites et renvoie une ligne de résultats."""
+    """Exécute le GA mémétique avec paramètres explicites et renvoie une ligne de résultats."""
     params = (ga.MAX_TIME_SECONDS, ga.RANDOM_SEED, ga.MAX_GENERATIONS,
               ga.POPULATION_SIZE, ga.MUTATION_PROBABILITY,
               ga.CROSSOVER_PROBABILITY, ga.STAGNATION_GENERATIONS)
@@ -92,6 +92,7 @@ def run_ga(instance, max_time=None, max_gen=GA_MAX_GENERATIONS, seed=42,
         "gap_reference_percent": round(rel_gap, 2) if rel_gap is not None else None,
         "elapsed_seconds": round(stats["search_seconds"], 3),
         "generations": stats["completed_generations"],
+        "local_search_calls": stats["local_search_calls"],
         "stop_reason": stats["stop_reason"], "feasible": feasible, "seed": seed,
     }
 

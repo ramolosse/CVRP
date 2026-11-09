@@ -4,7 +4,7 @@ Projet CesiCDP / ADEME : modélisation et résolution du problème de tournées 
 
 ## Périmètre
 
-Le projet traite un dépôt, une flotte homogène limitée, des demandes connues et des coûts d’arcs fixes. Le solveur retenu pour les grandes instances est l’algorithme génétique (GA). Le PLNE avec Branch and Bound sert de référence sur les petites instances, lorsque le solveur peut certifier l’optimalité.
+Le projet traite un dépôt, une flotte homogène limitée, des demandes connues et des coûts d’arcs fixes. Le solveur retenu pour les grandes instances est un algorithme génétique mémétique (GA + recherche locale). Le PLNE avec Branch and Bound sert de référence sur les petites instances, lorsque le solveur peut certifier l’optimalité.
 
 Les fenêtres de livraison, l’attente et le trafic dépendant de l’heure ne sont pas implémentés. Les résultats décrivent donc le CVRP classique et ne doivent pas être présentés comme tenant compte du trafic.
 
@@ -12,7 +12,8 @@ Les fenêtres de livraison, l’attente et le trafic dépendant de l’heure ne 
 
 ```text
 algorithms/
-  genetic_algorithm.py   # Algorithme génétique et opérateurs
+  genetic_algorithm.py   # Algorithme génétique mémétique et opérateurs
+  local_search.py        # Split optimal (Prins) et recherche locale
   plne.py                # PLNE, Branch and Bound, interface CBC
 common.py                # Chargement, coûts et validation CVRP
 main.ipynb               # Démarche, expériences et interprétation des résultats
