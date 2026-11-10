@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 import algorithms.genetic_algorithm as ga
+import algorithms.memetic_algorithm as memetic
 from algorithms.plne import branch_and_bound
 from common import check_solution, gap, load_instance, sub_instance
 
@@ -29,10 +30,12 @@ DEFAULT_INSTANCE_NAMES = [
 ]
 EXPERIMENT_SEEDS = (42, 123, 456, 789, 1024)
 GA_MAX_GENERATIONS = 1000
-GA_POPULATION_SIZE = 30
+GA_POPULATION_SIZE = 120
+GA_COMPARISON_POPULATION_SIZE = 30
 GA_MUTATION_PROBABILITY = 0.25
 GA_CROSSOVER_PROBABILITY = 0.90
-GA_STAGNATION_GENERATIONS = 40
+GA_STAGNATION_GENERATIONS = 150
+GA_COMPARISON_STAGNATION_GENERATIONS = 40
 GA_TIME_LIMITS_BY_SIZE = ((35, 5.0), (55, 8.0), (float("inf"), 12.0))
 GA_MULTI_SEED_TIME_LIMIT = 3.0
 PLNE_GA_COMPARISON_MAX_CLIENTS = 30
@@ -61,26 +64,30 @@ def ga_time_limit_for_instance(instance):
                 if instance.n_customers <= max_clients)
 
 
-def run_ga(instance, max_time=None, max_gen=GA_MAX_GENERATIONS, seed=42,
-           pop_size=GA_POPULATION_SIZE, mut_prob=GA_MUTATION_PROBABILITY,
-           cx_prob=GA_CROSSOVER_PROBABILITY, stagnation=GA_STAGNATION_GENERATIONS):
-    """Exécute le GA mémétique avec paramètres explicites et renvoie une ligne de résultats."""
-    params = (ga.MAX_TIME_SECONDS, ga.RANDOM_SEED, ga.MAX_GENERATIONS,
-              ga.POPULATION_SIZE, ga.MUTATION_PROBABILITY,
-              ga.CROSSOVER_PROBABILITY, ga.STAGNATION_GENERATIONS)
+def _run_solver(solver, instance, max_time=None, max_gen=GA_MAX_GENERATIONS, seed=42,
+                pop_size=None, mut_prob=GA_MUTATION_PROBABILITY,
+                cx_prob=GA_CROSSOVER_PROBABILITY, stagnation=None):
+    """Exécute un solveur génétique avec paramètres communs au protocole."""
+    parameter_names = ("MAX_TIME_SECONDS", "RANDOM_SEED", "MAX_GENERATIONS",
+                       "POPULATION_SIZE", "MUTATION_PROBABILITY",
+                       "CROSSOVER_PROBABILITY", "STAGNATION_GENERATIONS")
+    if pop_size is None:
+        pop_size = solver.POPULATION_SIZE
+    if stagnation is None:
+        stagnation = solver.STAGNATION_GENERATIONS
+    previous = tuple(getattr(solver, name) for name in parameter_names)
     try:
-        ga.MAX_TIME_SECONDS = ga_time_limit_for_instance(instance) if max_time is None else max_time
-        ga.RANDOM_SEED = seed
-        ga.MAX_GENERATIONS = max_gen
-        ga.POPULATION_SIZE = pop_size
-        ga.MUTATION_PROBABILITY = mut_prob
-        ga.CROSSOVER_PROBABILITY = cx_prob
-        ga.STAGNATION_GENERATIONS = stagnation
-        best, stats = ga.solve(instance)
+        solver.MAX_TIME_SECONDS = ga_time_limit_for_instance(instance) if max_time is None else max_time
+        solver.RANDOM_SEED = seed
+        solver.MAX_GENERATIONS = max_gen
+        solver.POPULATION_SIZE = pop_size
+        solver.MUTATION_PROBABILITY = mut_prob
+        solver.CROSSOVER_PROBABILITY = cx_prob
+        solver.STAGNATION_GENERATIONS = stagnation
+        best, stats = solver.solve(instance)
     finally:
-        (ga.MAX_TIME_SECONDS, ga.RANDOM_SEED, ga.MAX_GENERATIONS,
-         ga.POPULATION_SIZE, ga.MUTATION_PROBABILITY,
-         ga.CROSSOVER_PROBABILITY, ga.STAGNATION_GENERATIONS) = params
+        for name, value in zip(parameter_names, previous):
+            setattr(solver, name, value)
     cost = best.cost if best else float("inf")
     feasible = best is not None and not check_solution(instance, best.routes)
     reference = instance.best_known
@@ -88,19 +95,39 @@ def run_ga(instance, max_time=None, max_gen=GA_MAX_GENERATIONS, seed=42,
     return {
         "instance": instance.name, "n_clients": instance.n_customers,
         "n_vehicles": instance.n_vehicles, "capacity": instance.capacity,
-        "best_known": reference, "ga_cost": cost,
+        "best_known": reference, "cost": cost,
         "gap_reference_percent": round(rel_gap, 2) if rel_gap is not None else None,
         "elapsed_seconds": round(stats["search_seconds"], 3),
         "generations": stats["completed_generations"],
-        "local_search_calls": stats["local_search_calls"],
+        "local_search_calls": stats.get("local_search_calls", 0),
         "stop_reason": stats["stop_reason"], "feasible": feasible, "seed": seed,
     }
+
+
+def run_ga(instance, **kwargs):
+    """Exécute le GA de base (Split glouton, sans recherche locale)."""
+    result = _run_solver(ga, instance, **kwargs)
+    result["ga_cost"] = result.pop("cost")
+    return result
+
+
+def run_memetic(instance, **kwargs):
+    """Exécute le GA mémétique (Split optimal et recherche locale)."""
+    result = _run_solver(memetic, instance, **kwargs)
+    result["memetic_cost"] = result.pop("cost")
+    return result
 
 
 def run_single_seed_ga_benchmark(instances=None, seed=EXPERIMENT_SEEDS[0], **ga_kwargs):
     """Une exécution GA par instance; renvoie un DataFrame de résultats."""
     instances = load_benchmark_instances() if instances is None else instances
     return pd.DataFrame([run_ga(instance, seed=seed, **ga_kwargs) for instance in instances])
+
+
+def run_single_seed_memetic_benchmark(instances=None, seed=EXPERIMENT_SEEDS[0], **kwargs):
+    """Une exécution mémétique par instance."""
+    instances = load_benchmark_instances() if instances is None else instances
+    return pd.DataFrame([run_memetic(instance, seed=seed, **kwargs) for instance in instances])
 
 
 def run_multi_seed_ga_benchmark(instances=None, seeds=EXPERIMENT_SEEDS,
@@ -122,6 +149,56 @@ def run_multi_seed_ga_benchmark(instances=None, seeds=EXPERIMENT_SEEDS,
     return results, summary
 
 
+def run_multi_seed_memetic_benchmark(instances=None, seeds=EXPERIMENT_SEEDS,
+                                     max_time=GA_MULTI_SEED_TIME_LIMIT, **kwargs):
+    """Répète le mémétique par instance et graine, avec statistiques agrégées."""
+    instances = load_benchmark_instances() if instances is None else instances
+    rows = [run_memetic(instance, max_time=max_time, seed=seed, **kwargs)
+            for instance in instances for seed in seeds]
+    results = pd.DataFrame(rows)
+    results["gap_num"] = pd.to_numeric(results["gap_reference_percent"], errors="coerce")
+    summary = results.groupby("instance").agg(
+        n_clients=("n_clients", "first"), gap_mean=("gap_num", "mean"),
+        gap_median=("gap_num", "median"), gap_stdev=("gap_num", "std"),
+        cost_mean=("memetic_cost", "mean"), cost_median=("memetic_cost", "median"),
+        cost_stdev=("memetic_cost", "std"), time_mean_seconds=("elapsed_seconds", "mean"),
+        time_median_seconds=("elapsed_seconds", "median"),
+        time_stdev_seconds=("elapsed_seconds", "std"),
+    ).round(2)
+    return results, summary
+
+
+def compare_ga_vs_memetic(instances=None, seeds=EXPERIMENT_SEEDS,
+                          max_time=GA_MULTI_SEED_TIME_LIMIT,
+                          pop_size=GA_COMPARISON_POPULATION_SIZE,
+                          stagnation=GA_COMPARISON_STAGNATION_GENERATIONS, **kwargs):
+    """Compare GA et mémétique à budget, instance et graine identiques."""
+    instances = load_benchmark_instances() if instances is None else instances
+    rows = []
+    for instance in instances:
+        for seed in seeds:
+            baseline = run_ga(instance, max_time=max_time, seed=seed, pop_size=pop_size,
+                              stagnation=stagnation, **kwargs)
+            hybrid = run_memetic(instance, max_time=max_time, seed=seed, pop_size=pop_size,
+                                 stagnation=stagnation, **kwargs)
+            rows.append({
+                "instance": instance.name, "n_clients": instance.n_customers, "seed": seed,
+                "time_limit_seconds_per_method": max_time,
+                "population_size": pop_size,
+                "stagnation_generations": stagnation,
+                "ga_cost": baseline["ga_cost"], "ga_gap_percent": baseline["gap_reference_percent"],
+                "ga_feasible": baseline["feasible"],
+                "memetic_cost": hybrid["memetic_cost"],
+                "memetic_gap_percent": hybrid["gap_reference_percent"],
+                "memetic_feasible": hybrid["feasible"],
+                "gap_reduction_percentage_points": (
+                    round(baseline["gap_reference_percent"] - hybrid["gap_reference_percent"], 2)
+                    if baseline["gap_reference_percent"] is not None
+                    and hybrid["gap_reference_percent"] is not None else None),
+            })
+    return pd.DataFrame(rows)
+
+
 def compare_plne_vs_ga(instances=None, max_clients=PLNE_GA_COMPARISON_MAX_CLIENTS,
                        time_limit=PLNE_GA_COMPARISON_TIME_LIMIT, seed=EXPERIMENT_SEEDS[0]):
     """Compare GA et Branch and Bound sur les petites instances, sous limite égale."""
@@ -138,6 +215,33 @@ def compare_plne_vs_ga(instances=None, max_clients=PLNE_GA_COMPARISON_MAX_CLIENT
             "reference_cost": instance.best_known, "ga_cost": heuristic["ga_cost"],
             "ga_gap_reference_percent": heuristic["gap_reference_percent"],
             "ga_elapsed_seconds": heuristic["elapsed_seconds"],
+            "plne_status": exact.status, "plne_cost": exact.cost,
+            "plne_lower_bound": exact.lower_bound,
+            "plne_gap_bound_percent": exact.gap,
+            "plne_elapsed_seconds": round(exact.time, 3),
+        })
+    return pd.DataFrame(rows)
+
+
+def compare_plne_vs_memetic(instances=None, max_clients=PLNE_GA_COMPARISON_MAX_CLIENTS,
+                            time_limit=PLNE_GA_COMPARISON_TIME_LIMIT,
+                            seed=EXPERIMENT_SEEDS[0]):
+    """Compare le mémétique au Branch and Bound sur les petites instances."""
+    instances = load_benchmark_instances() if instances is None else instances
+    rows = []
+    for instance in instances:
+        if instance.n_customers > max_clients:
+            continue
+        heuristic = run_memetic(instance, max_time=time_limit, seed=seed)
+        exact = branch_and_bound(instance, time_limit=time_limit, cuts=True)
+        rows.append({
+            "instance": instance.name, "n_clients": instance.n_customers,
+            "time_limit_seconds_per_method": time_limit,
+            "reference_cost": instance.best_known,
+            "memetic_cost": heuristic["memetic_cost"],
+            "memetic_gap_reference_percent": heuristic["gap_reference_percent"],
+            "memetic_feasible": heuristic["feasible"],
+            "memetic_elapsed_seconds": heuristic["elapsed_seconds"],
             "plne_status": exact.status, "plne_cost": exact.cost,
             "plne_lower_bound": exact.lower_bound,
             "plne_gap_bound_percent": exact.gap,

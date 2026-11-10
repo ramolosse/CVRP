@@ -1,27 +1,18 @@
-"""Algorithme génétique mémétique pour le CVRP, compatible avec Python 3.9+.
+"""Algorithme génétique pour le CVRP, compatible avec Python 3.9+.
 L’instance est chargée par le code appelant puis transmise à ``solve(instance)``.
 Un dépôt, une capacité homogène et des demandes positives ou nulles.
 Les fenêtres de temps et les contraintes de durée ne sont pas prises en charge.
-
-Mémétique = génétique + recherche locale. Chaque enfant est :
-1. décodé par un Split optimal (programmation dynamique de Prins, flotte limitée) ;
-2. amélioré par une recherche locale (relocate/or-opt, swap, 2-opt, 2-opt*) ;
-3. réécrit dans le chromosome (apprentissage lamarckien : l’ordre de visite
-   devient la concaténation des tournées améliorées).
-Les clones (même coût qu’un individu déjà présent) sont refusés pour garder
-de la diversité dans la population.
+Le décodage utilise un Split glouton séquentiel, sans programmation dynamique.
 """
 
 # ======================== PARAMÈTRES UTILISATEUR ========================
-POPULATION_SIZE = 30
+POPULATION_SIZE = 120
 MAX_GENERATIONS = 1000
 MAX_TIME_SECONDS = 30.0           # Recherche seule, initialisation de la population comprise.
-STAGNATION_GENERATIONS = 40       # Générations complètes consécutives sans amélioration.
+STAGNATION_GENERATIONS = 150      # Générations complètes consécutives sans amélioration.
 IMPROVEMENT_TOLERANCE = 1e-9
 CROSSOVER_PROBABILITY = 0.90
 MUTATION_PROBABILITY = 0.25
-LOCAL_SEARCH_PROBABILITY = 1.0    # Part des individus améliorés par recherche locale.
-GRANULAR_NEIGHBORS = 15           # Plus proches clients examinés par la recherche locale.
 TOURNAMENT_SIZE = 3
 ELITE_SIZE = 4
 RANDOM_SEED = 42
@@ -40,9 +31,6 @@ from common import (
     DEPOT, Instance, check_solution, gap as common_gap, route_cost, route_load,
     solution_cost,
 )
-from algorithms.local_search import (
-    SearchTimeout, build_context, check_time, local_search, optimal_split,
-)
 
 
 @dataclass
@@ -50,6 +38,16 @@ class Individual:
     order: List[int]
     cost: float
     routes: List[List[int]]
+
+
+class SearchTimeout(Exception):
+    pass
+
+
+def check_time(deadline):
+    """Vérifie la limite de temps, y compris pendant le décodage des routes."""
+    if time.perf_counter() >= deadline:
+        raise SearchTimeout
 
 
 def validate_parameters():
@@ -60,7 +58,6 @@ def validate_parameters():
         ("STAGNATION_GENERATIONS", STAGNATION_GENERATIONS, 1),
         ("TOURNAMENT_SIZE", TOURNAMENT_SIZE, 1),
         ("ELITE_SIZE", ELITE_SIZE, 1),
-        ("GRANULAR_NEIGHBORS", GRANULAR_NEIGHBORS, 1),
     ]:
         if not isinstance(value, int) or isinstance(value, bool) or value < minimum:
             raise ValueError(f"{name} must be an integer >= {minimum}.")
@@ -70,8 +67,7 @@ def validate_parameters():
         raise ValueError("MAX_TIME_SECONDS must be finite and positive.")
     if not math.isfinite(IMPROVEMENT_TOLERANCE) or IMPROVEMENT_TOLERANCE < 0:
         raise ValueError("IMPROVEMENT_TOLERANCE must be finite and nonnegative.")
-    probabilities = (CROSSOVER_PROBABILITY, MUTATION_PROBABILITY, LOCAL_SEARCH_PROBABILITY)
-    if not all(0 <= p <= 1 for p in probabilities):
+    if not all(0 <= p <= 1 for p in (CROSSOVER_PROBABILITY, MUTATION_PROBABILITY)):
         raise ValueError("Operator probabilities must be in [0, 1].")
 
 
@@ -85,37 +81,65 @@ class SearchState:
     completed_generations: int = 0
     stagnant_generations: int = 0
     evaluations: int = 0
-    local_search_calls: int = 0
     history: List[dict] = field(default_factory=list)
 
 
-def calculate_route_cost(route, ctx):
+def greedy_split(order, problem, deadline):
+    """Remplit chaque véhicule dans l’ordre donné, puis ouvre la route suivante.
+
+    Le client suivant est ajouté si sa demande tient dans la capacité restante.
+    Sinon, la route est fermée et ce client commence une nouvelle route.
+    Aucun réordonnancement ni recherche du découpage de distance minimale.
+    None indique un dépassement du nombre de véhicules autorisé.
+    """
+    routes, route, load = [], [], 0.0
+    for customer in order:
+        check_time(deadline)
+        demand = float(problem.demands[customer])
+        if demand > problem.capacity + 1e-9:
+            return None
+        if route and load + demand > problem.capacity + 1e-9:
+            routes.append(route)
+            if len(routes) >= problem.n_vehicles:
+                return None
+            route, load = [], 0.0
+        route.append(customer)
+        load += demand
+    if route:
+        routes.append(route)
+    return routes if len(routes) <= problem.n_vehicles else None
+
+
+def calculate_route_cost(route, problem, deadline):
     """Calcule la distance d’une route, départ et retour au dépôt compris."""
-    d = ctx.distances
     total, previous = 0.0, DEPOT
     for customer in route:
-        total += d[previous][customer]
+        check_time(deadline)
+        total += problem.distances[previous, customer]
         previous = customer
-    return float(total + d[previous][DEPOT])
+    return float(total + problem.distances[previous, DEPOT])
 
 
-def evaluate_individual(order, ctx, rng, deadline, state):
-    """Décode, améliore puis évalue un ordre de visite (coût à minimiser).
+def calculate_fitness(order, problem, deadline):
+    """Évalue l’adaptation par le coût à minimiser : une valeur faible est meilleure.
 
-    Un Split irréalisable (trop de véhicules) reçoit un coût infini. Après la
-    recherche locale, le chromosome est remplacé par la concaténation des
-    tournées améliorées : l’amélioration est transmise aux générations suivantes.
+    Une permutation invalide ou un Split irréalisable reçoit un coût infini.
+    Les routes décodées sont retournées avec le coût pour éviter un second Split.
     """
     check_time(deadline)
-    routes = optimal_split(order, ctx, deadline)
+    if len(order) != len(problem.customers) or set(order) != set(problem.customers):
+        return math.inf, []
+    routes = greedy_split(order, problem, deadline)
     if routes is None:
-        return Individual(list(order), math.inf, [])
-    if rng.random() < LOCAL_SEARCH_PROBABILITY:
-        routes = local_search(routes, ctx, rng, deadline)
-        state.local_search_calls += 1
-        order = [customer for route in routes for customer in route]
-    cost = sum(calculate_route_cost(route, ctx) for route in routes)
-    return Individual(list(order), cost, routes)
+        return math.inf, []
+    cost = sum(calculate_route_cost(route, problem, deadline) for route in routes)
+    return cost, routes
+
+
+def evaluate_individual(order, problem, deadline):
+    """Construit un individu évalué à partir de son ordre de visite."""
+    cost, routes = calculate_fitness(order, problem, deadline)
+    return Individual(order[:], cost, routes)
 
 
 def create_initial_order(problem, rng, deadline, nearest_neighbor=False):
@@ -142,25 +166,15 @@ def update_best_solution(individual, state):
         state.best = individual
 
 
-def cost_key(individual):
-    """Clé de détection des clones : deux individus de même coût sont jugés identiques."""
-    return round(individual.cost, 6) if math.isfinite(individual.cost) else math.inf
-
-
-def initialize_population(problem, ctx, rng, deadline, state):
+def initialize_population(problem, rng, deadline, state):
     """Crée et évalue la population initiale, avec un premier ordre par plus proche voisin."""
-    population, seen = [], set()
-    attempts, max_attempts = 0, 3 * POPULATION_SIZE
-    while len(population) < POPULATION_SIZE:
+    population = []
+    for index in range(POPULATION_SIZE):
         check_time(deadline)
-        order = create_initial_order(problem, rng, deadline, nearest_neighbor=(attempts == 0))
-        individual = evaluate_individual(order, ctx, rng, deadline, state)
-        update_best_solution(individual, state)
-        attempts += 1
-        if cost_key(individual) in seen and attempts <= max_attempts:
-            continue
-        seen.add(cost_key(individual))
+        order = create_initial_order(problem, rng, deadline, nearest_neighbor=(index == 0))
+        individual = evaluate_individual(order, problem, deadline)
         population.append(individual)
+        update_best_solution(individual, state)
     return population
 
 
@@ -233,29 +247,23 @@ def create_offspring_orders(parent_a, parent_b, rng):
 # ==================== FORMATION DE LA NOUVELLE GÉNÉRATION ====================
 
 
-def create_next_generation(population, ctx, rng, deadline, state):
-    """Conserve les élites et complète la population avec des enfants améliorés.
+def create_next_generation(population, problem, rng, deadline, state):
+    """Conserve les élites et complète la population avec des enfants évalués.
 
-    Un enfant de même coût qu’un individu déjà retenu est refusé (clone), sauf
-    si trop de tentatives ont échoué. Chaque amélioration est mémorisée avant
-    de poursuivre : elle reste disponible si le temps expire en cours de génération.
+    Chaque amélioration est mémorisée avant de poursuivre : elle reste disponible
+    si le temps expire au milieu de cette génération.
     """
     next_population = select_elites(population)
-    seen = {cost_key(individual) for individual in next_population}
-    attempts, max_attempts = 0, 3 * POPULATION_SIZE
     while len(next_population) < POPULATION_SIZE:
         check_time(deadline)
         parent_a, parent_b = select_parents(population, rng)
         for order in create_offspring_orders(parent_a, parent_b, rng):
             if len(next_population) >= POPULATION_SIZE:
                 break
-            individual = evaluate_individual(order, ctx, rng, deadline, state)
-            update_best_solution(individual, state)
-            attempts += 1
-            if cost_key(individual) in seen and attempts <= max_attempts:
-                continue
-            seen.add(cost_key(individual))
+            check_time(deadline)
+            individual = evaluate_individual(order, problem, deadline)
             next_population.append(individual)
+            update_best_solution(individual, state)
     return next_population
 
 
@@ -292,22 +300,21 @@ def check_termination_conditions(state, deadline):
 
 
 def solve(problem):
-    """Coordonne les étapes de l’algorithme mémétique (Split optimal + recherche locale)."""
+    """Coordonne les étapes de l’algorithme génétique avec Split glouton."""
     validate_parameters()
     rng = random.Random(RANDOM_SEED)
     started = time.perf_counter()
     deadline = started + MAX_TIME_SECONDS
     state = SearchState()
     try:
-        ctx = build_context(problem, GRANULAR_NEIGHBORS)
-        population = initialize_population(problem, ctx, rng, deadline, state)
+        population = initialize_population(problem, rng, deadline, state)
         record_history(state)
         while True:
             reason = check_termination_conditions(state, deadline)
             if reason is not None:
                 break
             previous_best = math.inf if state.best is None else state.best.cost
-            population = create_next_generation(population, ctx, rng, deadline, state)
+            population = create_next_generation(population, problem, rng, deadline, state)
             update_generation_statistics(state, previous_best)
     except SearchTimeout:
         reason = "max_time"
@@ -316,7 +323,6 @@ def solve(problem):
         "completed_generations": state.completed_generations,
         "stagnant_generations": state.stagnant_generations,
         "evaluations": state.evaluations,
-        "local_search_calls": state.local_search_calls,
         "search_seconds": time.perf_counter() - started,
         "history": state.history,
     }
@@ -375,8 +381,8 @@ def write_and_print_result(best, stats, problem, reference_cost, output_path):
     fields = ["record_type", "instance", "status", "best_cost", "reference_cost",
               "gap_percent", "vehicle_limit", "vehicles_used", "capacity",
               "stop_reason", "completed_generations", "stagnant_generations",
-              "evaluations", "local_search_calls", "search_seconds", "vehicle",
-              "nodes", "load", "distance", "generation", "parameter", "value"]
+              "evaluations", "search_seconds", "vehicle", "nodes", "load",
+              "distance", "generation", "parameter", "value"]
     # utf-8-sig facilite l’ouverture des accents dans Excel ; newline évite les lignes vides.
     with output.open("w", encoding="utf-8-sig", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=fields)

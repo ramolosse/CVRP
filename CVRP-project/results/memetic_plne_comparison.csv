@@ -1,0 +1,9 @@
+instance,n_clients,time_limit_seconds_per_method,reference_cost,memetic_cost,memetic_gap_reference_percent,memetic_feasible,memetic_elapsed_seconds,plne_status,plne_cost,plne_lower_bound,plne_gap_bound_percent,plne_elapsed_seconds
+B-n31-k5,30,5.0,672.0,672.0,0.0,True,2.062,optimal,672.0,672.0,0.0,1.646
+E-n13-k4,12,5.0,247.0,247.0,0.0,True,0.613,optimal,247.0,247.0,0.0,0.039
+E-n22-k4,21,5.0,375.0,375.0,0.0,True,1.459,optimal,375.0,375.0,0.0,0.057
+E-n30-k3,29,5.0,534.0,534.0,0.0,True,2.979,time_limit,inf,529.0,inf,5.028
+P-n16-k8,15,5.0,450.0,450.0,0.0,True,0.736,optimal,450.0,450.0,0.0,0.395
+P-n19-k2,18,5.0,212.0,212.0,0.0,True,1.402,optimal,212.0,212.0,0.0,0.456
+P-n20-k2,19,5.0,216.0,216.0,0.0,True,1.611,optimal,216.0,216.0,0.0,0.374
+P-n22-k8,21,5.0,603.0,603.0,0.0,True,1.419,time_limit,inf,596.0,inf,5.001
