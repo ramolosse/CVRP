@@ -86,6 +86,7 @@ class SearchState:
     stagnant_generations: int = 0
     evaluations: int = 0
     local_search_calls: int = 0
+    started: float = field(default_factory=time.perf_counter)
     history: List[dict] = field(default_factory=list)
 
 
@@ -262,6 +263,7 @@ def create_next_generation(population, ctx, rng, deadline, state):
 def record_history(state):
     """Enregistre le meilleur coût après l’initialisation ou une génération complète."""
     state.history.append({"generation": state.completed_generations,
+                          "seconds": time.perf_counter() - state.started,
                           "best_cost": None if state.best is None else state.best.cost})
 
 
@@ -297,7 +299,7 @@ def solve(problem):
     rng = random.Random(RANDOM_SEED)
     started = time.perf_counter()
     deadline = started + MAX_TIME_SECONDS
-    state = SearchState()
+    state = SearchState(started=started)
     try:
         ctx = build_context(problem, GRANULAR_NEIGHBORS)
         population = initialize_population(problem, ctx, rng, deadline, state)
