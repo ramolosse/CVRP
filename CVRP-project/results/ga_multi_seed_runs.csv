@@ -1,0 +1,12 @@
+instance,n_clients,n_vehicles,capacity,best_known,gap_reference_percent,elapsed_seconds,generations,local_search_calls,stop_reason,feasible,seed,ga_cost,gap_num
+A-n32-k5,31,5,100,784.0,5.10,0.79,189,0,stagnation,True,42,824.0,5.10
+A-n32-k5,31,5,100,784.0,11.99,0.91,219,0,stagnation,True,123,878.0,11.99
+A-n32-k5,31,5,100,784.0,12.24,0.92,218,0,stagnation,True,456,880.0,12.24
+A-n32-k5,31,5,100,784.0,2.17,2.31,577,0,stagnation,True,789,801.0,2.17
+A-n32-k5,31,5,100,784.0,11.99,1.06,269,0,stagnation,True,1024,878.0,11.99
+...,...,...,...,...,...,...,...,...,...,...,...,...,...
+P-n50-k10,49,10,100,696.0,14.80,3.00,629,0,max_time,True,42,799.0,14.80
+P-n50-k10,49,10,100,696.0,12.07,3.00,611,0,max_time,True,123,780.0,12.07
+P-n50-k10,49,10,100,696.0,10.63,3.00,650,0,max_time,True,456,770.0,10.63
+P-n50-k10,49,10,100,696.0,15.09,3.00,598,0,max_time,True,789,801.0,15.09
+P-n50-k10,49,10,100,696.0,10.20,3.00,647,0,max_time,True,1024,767.0,10.20
