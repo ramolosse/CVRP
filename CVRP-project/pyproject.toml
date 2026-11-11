@@ -5,11 +5,13 @@ description = "Projet d'optimisation de tournées de livraison (CVRP) - CESI"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "highspy>=1.11.0",
     "ipykernel>=7.4.0",
     "matplotlib>=3.11.2",
+    "notebook>=7.6.3",
     "numpy>=2.5.4",
     "pandas>=3.1.0",
-    "pulp>=4.2.0",
+    "pulp[cbc]>=4.2.0",
     "requests>=2.34.2",
     "vrplib>=2.2.0",
 ]

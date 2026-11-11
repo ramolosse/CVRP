@@ -1,146 +1,104 @@
-# CVRP Project — Optimisation de Tournées de Véhicules avec Capacité
+# CVRP — tournées de livraison
 
-Ce projet a pour objectif de modéliser, implémenter et comparer plusieurs approches algorithmiques pour résoudre le problème de tournées de livraison avec contraintes de capacité (**CVRP** — *Capacitated Vehicle Routing Problem*), dans le cadre du projet CesiCDP (CESI / ADEME).
+Projet CesiCDP / ADEME : modélisation et résolution du problème de tournées de véhicules avec capacité (CVRP).
 
----
+## Périmètre
 
-## 📁 Structure du Projet
+Le projet traite un dépôt, une flotte homogène limitée, des demandes connues et des coûts d’arcs fixes. Le projet compare d’abord un algorithme génétique de base (Split glouton), puis son amélioration mémétique (Split optimal et recherche locale). Le mémétique est retenu pour les grandes instances. Le PLNE avec Branch and Bound sert de référence sur les petites instances, lorsque le solveur peut certifier l’optimalité.
 
-Le projet est structuré de manière modulaire pour séparer la gestion des données, les algorithmes de résolution, les benchmarks et les visualisations :
+Les fenêtres de livraison, l’attente et le trafic dépendant de l’heure ne sont pas implémentés. Les résultats décrivent donc le CVRP classique et ne doivent pas être présentés comme tenant compte du trafic.
+
+## Fichiers principaux
 
 ```text
-cvrp-project/
-├── data/                          # Instances du problème (.vrp) à importer
-│   └── .gitkeep
-├── algorithms/                    # Modules des algorithmes (à implémenter)
-│   ├── __init__.py
-│   ├── plne.py                    # Résolution exacte par PLNE (ex: PuLP)
-│   ├── hill_climbing.py           # Recherche locale (Hill Climbing)
-│   ├── genetic_algorithm.py       # Algorithme Génétique
-│   └── tabu_search.py             # Recherche Tabou
-├── common.py                      # Fonctions communes (parsing, calculs distances/coûts, validation)
-├── benchmark.py                   # Script d'exécution et collecte des résultats
-├── results/                       # Sorties et analyses
-│   ├── results.csv                # Tableau récapitulatif des performances
-│   └── plots/                     # Graphiques comparatifs et tracés de tournées
-├── main.ipynb                     # Notebook interactif d'expérimentation et visualisation
-├── livrables/                     # Livrables théoriques et modélisations (Livrable 1)
-│   └── Livrable_1_Modelisation_CVRP_ameliore.ipynb
-├── pyproject.toml                 # Définition du projet et dépendances
-├── uv.lock                        # Fichier de verrouillage des versions
-├── .gitignore                     # Règles d'exclusion Git
-└── README.md                      # Documentation du projet
+algorithms/
+  genetic_algorithm.py   # GA de base avec Split glouton
+  memetic_algorithm.py   # GA avec Split optimal et recherche locale
+  local_search.py        # Split optimal (Prins) et opérateurs de recherche locale
+  plne.py                # PLNE, Branch and Bound, interface CBC
+common.py                # Chargement, coûts et validation CVRP
+main.ipynb               # Démarche, expériences et interprétation des résultats
+benchmark.py             # Fonctions réutilisables de chargement et d'expérimentation
+livrables/               # Modélisation formelle
+data/                    # Instances VRPLIB et solutions de référence
+results/                 # Quelques résultats exportés
 ```
 
-### Rôle des composants
+## Installation et lancement
 
-- **`data/`** : Répertoire destiné à accueillir les instances de test au format `.vrp` (instances standard issues de CVRPLIB ou instances personnalisées). *Les données seront importées ultérieurement.*
-- **`algorithms/`** : Contient les différentes méthodes de résolution. Chaque fichier correspond à un paradigme d'optimisation spécifique (*à implémenter ultérieurement*).
-- **`common.py`** : Regroupera les fonctions partagées : chargement des fichiers avec `vrplib`, calcul de la matrice des distances euclidiennes, évaluation du coût d'une solution, vérification de la faisabilité (respect de la capacité $Q$, unicité de visite des clients, départ/retour au dépôt).
-- **`benchmark.py`** : Script automatisé permettant de tester les algorithmes sur un ensemble d'instances, de mesurer les temps d'exécution et les coûts obtenus, et d'exporter les résultats dans `results/results.csv`.
-- **`results/`** : Conserve l'historique des exécutions, les métriques (`results.csv`) et les figures exportées (`results/plots/`).
-- **`main.ipynb`** : Point d'entrée interactif sous Jupyter pour manipuler les données, tester les fonctions à la volée et afficher les cartes des tournées.
+Depuis la racine du projet, installer les dépendances déclarées dans `pyproject.toml` :
 
----
-
-## 🛠️ Installation et Environnement
-
-Le projet requiert **Python 3.12 ou supérieur**.
-
-### Option 1 : Avec `uv` (Recommandé - rapide et moderne)
-
-Si vous avez installé [`uv`](https://github.com/astral-sh/uv) :
-
-1. **Synchroniser l'environnement et installer les dépendances** :
-   ```bash
-   uv sync
-   ```
-   Cette commande crée automatiquement le dossier `.venv` et installe l'ensemble des dépendances verrouillées par `uv.lock`.
-
-### Option 2 : Avec `venv` et `pip` standard
-
-1. **Créer l'environnement virtuel** :
-   ```bash
-   python -m venv .venv
-   ```
-
-2. **Activer l'environnement virtuel** :
-   - **Sur Windows (PowerShell)** :
-     ```powershell
-     .venv\Scripts\Activate.ps1
-     ```
-   - **Sur Windows (Invite de commandes cmd)** :
-     ```cmd
-     .venv\Scripts\activate.bat
-     ```
-   - **Sur Linux / macOS / Git Bash** :
-     ```bash
-     source .venv/bin/activate
-     ```
-
-3. **Installer les dépendances** :
-   ```bash
-   pip install -r <(python -c "import tomli; ...") # ou directement :
-   pip install numpy pandas matplotlib pulp vrplib ipykernel requests
-   ```
-
----
-
-## 🚀 Utilisation
-
-### 1. Ajout des données de test
-Déposez vos fichiers d'instances `.vrp` dans le dossier `data/` :
-```text
-data/
-├── A-n32-k5.vrp
-├── B-n31-k5.vrp
-└── ...
+```bash
+uv sync
 ```
 
-### 2. Lancement du Notebook interactif
-Ouvrez [`main.ipynb`](file:///C:/Users/ramol/OneDrive/Bureau/CESI%20Ann%C3%A9e%203/Bloc%20Algorithmique/Projet_Algorithmique/CVRP-project/main.ipynb) dans VS Code ou lancez le serveur Jupyter :
+Lancer ensuite le notebook principal :
 
-- Avec `uv` :
-  ```bash
-  uv run jupyter notebook main.ipynb
-  ```
-- Avec `venv` activé :
-  ```bash
-  jupyter notebook main.ipynb
-  ```
+```bash
+uv run jupyter notebook main.ipynb
+```
 
-> Dans VS Code, veillez à sélectionner le noyau Python situé dans `.venv` (`Python 3 (.venv)`).
+Dans Jupyter, exécuter les cellules dans l’ordre avec **Run All**. Le notebook présente d’abord les résultats du GA de base, puis ceux du mémétique, et termine cette partie par une comparaison appariée des gaps. Pour lancer uniquement les expériences, aller à la section 8 ; ses cellules appellent les fonctions réutilisables de `benchmark.py`. Le multi-graines lance 115 recherches et peut prendre plusieurs minutes. Les sorties du notebook sont conservées dans le fichier si celui-ci est enregistré après exécution.
 
-### 3. Exécution des Benchmarks (une fois les algorithmes implémentés)
-Pour lancer la comparaison globale de tous les algorithmes sur les instances :
+`benchmark.py` fournit des fonctions Python, sans interface en ligne de commande. Pour lancer un benchmark sans ouvrir le notebook, utiliser `uv run python -c` depuis la racine. Les commandes ci-dessous calculent les résultats et les enregistrent dans `results/`.
 
-- Avec `uv` :
-  ```bash
-  uv run python benchmark.py
-  ```
-- Avec `venv` activé :
-  ```bash
-  python benchmark.py
-  ```
+### Benchmarks depuis le terminal
 
----
+Les fonctions `run_*_ga_benchmark` exécutent le GA de base ; `run_*_memetic_benchmark` exécutent la version mémétique. La comparaison appariée conserve les mêmes instances, graines et budgets.
 
-## 🧠 Algorithmes prévus (À implémenter ultérieurement)
+Benchmark GA sur les 23 instances, avec une graine :
 
-| Algorithme | Type | Fichier | Objectif |
-| :--- | :--- | :--- | :--- |
-| **PLNE** | Exact | [`algorithms/plne.py`](file:///C:/Users/ramol/OneDrive/Bureau/CESI%20Ann%C3%A9e%203/Bloc%20Algorithmique/Projet_Algorithmique/CVRP-project/algorithms/plne.py) | Trouver la solution mathématiquement optimale (petites instances) via PuLP/CBC |
-| **Hill Climbing** | Métaheuristique | [`algorithms/hill_climbing.py`](file:///C:/Users/ramol/OneDrive/Bureau/CESI%20Ann%C3%A9e%203/Bloc%20Algorithmique/Projet_Algorithmique/CVRP-project/algorithms/hill_climbing.py) | Amélioration locale itérative (voisinages 2-opt, swap de clients) |
-| **Algorithme Génétique** | Métaheuristique | [`algorithms/genetic_algorithm.py`](file:///C:/Users/ramol/OneDrive/Bureau/CESI%20Ann%C3%A9e%203/Bloc%20Algorithmique/Projet_Algorithmique/CVRP-project/algorithms/genetic_algorithm.py) | Recherche globale par population, croisements (ex: OX) et mutations |
-| **Recherche Tabou** | Métaheuristique | [`algorithms/tabu_search.py`](file:///C:/Users/ramol/OneDrive/Bureau/CESI%20Ann%C3%A9e%203/Bloc%20Algorithmique/Projet_Algorithmique/CVRP-project/algorithms/tabu_search.py) | Échappement aux optima locaux via une liste tabou des mouvements récents |
+```powershell
+uv run python -c "from benchmark import run_single_seed_ga_benchmark; df = run_single_seed_ga_benchmark(); print(df.to_string(index=False)); df.to_csv('results/ga_single_seed.csv', index=False)"
+```
 
----
+Benchmark multi-graines (5 graines × 23 instances, soit 115 exécutions) :
 
-## 📦 Bibliothèques Principales
+```powershell
+uv run python -c "from benchmark import run_multi_seed_ga_benchmark; runs, summary = run_multi_seed_ga_benchmark(); print(summary.to_string()); runs.to_csv('results/ga_multi_seed_runs.csv', index=False); summary.to_csv('results/ga_multi_seed_summary.csv')"
+```
 
-- **[NumPy](https://numpy.org/)** : Calculs matriciels et distances euclidiennes.
-- **[Pandas](https://pandas.pydata.org/)** : Traitement et exportation des résultats de benchmark.
-- **[Matplotlib](https://matplotlib.org/)** : Visualisation graphique des réseaux, des clients et des tournées des camions.
-- **[VRPLIB](https://github.com/leonlan/vrplib)** : Parsing standardisé des fichiers d'instances `.vrp`.
-- **[PuLP](https://coin-or.github.io/pulp/)** : Modélisation et résolution du programme linéaire en nombres entiers (PLNE).
-- **[IPyKernel](https://ipython.org/)** : Exécution du notebook `main.ipynb`.
+Comparaison GA–PLNE sur les instances d’au plus 30 clients (jusqu’à 5 secondes par méthode) :
+
+```powershell
+uv run python -c "from benchmark import compare_plne_vs_ga; df = compare_plne_vs_ga(); print(df.to_string(index=False)); df.to_csv('results/ga_vs_plne.csv', index=False)"
+```
+
+Test de scalabilité sur des sous-instances Leuven1 de 50 à 500 clients :
+
+```powershell
+uv run python -c "from benchmark import run_scalability_benchmark; df = run_scalability_benchmark(); print(df.to_string(index=False)); df.to_csv('results/scalability.csv', index=False)"
+```
+
+Comparaison appariée GA–mémétique (5 graines × 23 instances, 3 secondes par méthode) :
+
+```powershell
+uv run python -c "from benchmark import compare_ga_vs_memetic; df = compare_ga_vs_memetic(pop_size=30, stagnation=40); print(df.to_string(index=False)); df.to_csv('results/ga_vs_memetic_runs.csv', index=False)"
+```
+
+Analyse du taux de mutation sur `A-n33-k5` :
+
+```powershell
+uv run python -c "from benchmark import run_mutation_sensitivity; df = run_mutation_sensitivity(); print(df.to_string(index=False)); df.to_csv('results/mutation_sensitivity.csv', index=False)"
+```
+
+Chaque commande peut prendre du temps selon l’expérience et la machine. Les fonctions acceptent des paramètres pour réduire le nombre d’instances ou modifier les graines et budgets ; leurs signatures et valeurs par défaut sont documentées dans `benchmark.py`.
+
+## Protocole expérimental du notebook
+
+- **Jeu d’essai** : 23 instances de référence VRPLIB des séries A, B, E et P, de 12 à 79 clients. Ce sont des benchmarks académiques, pas des données de tournées réelles. Les fichiers `.sol` sont des références connues ; ils ne constituent pas tous une preuve d’optimalité.
+- **GA** : une exécution de référence par instance, puis cinq graines (`42`, `123`, `456`, `789`, `1024`) sur chacune des 23 instances. Les résultats comprennent les gaps, coûts, temps, générations, faisabilité, moyenne, médiane et écart-type.
+- **Comparaison exacte** : GA et PLNE sur les instances d’au plus 30 clients, avec une limite maximale de cinq secondes par méthode. Le statut et la borne inférieure du PLNE permettent de distinguer un optimum certifié d’un arrêt sur limite.
+- **Autres essais** : relaxation linéaire, Branch and Bound sur des instances plus grandes, sous-instances Leuven1 de 50 à 500 clients, sensibilité au taux de mutation, convergence et cartes des tournées.
+
+La comparaison appariée à budget égal donne un gap moyen par instance de 19,88 % pour le GA de base et 0,34 % pour le mémétique ; les résultats sont dans `results/ga_vs_memetic_runs.csv` et `results/ga_vs_memetic_summary.csv`. Les résultats exportés précédemment sont préservés avec le préfixe `memetic_`. Les fonctions qui exécutent les expériences sont dans `benchmark.py`; `main.ipynb` les appelle et présente les tableaux, graphiques et interprétations.
+
+Les paramètres, graines et versions logicielles sont regroupés au début de la section expérimentale de `main.ipynb`. Les temps dépendent de la machine. Les tableaux et graphiques sont des sorties d’expérience ; enregistrer le notebook après exécution pour les conserver.
+
+## Représentation des solutions et PLNE
+
+Les instances sont chargées dans `common.Instance`. Le dépôt a l’identifiant interne `0`. Une solution est une liste de tournées sans le dépôt, par exemple `[[3, 1, 2], [4, 5]]`. Le coût inclut le départ et le retour au dépôt. Les distances `EUC_2D` suivent l’arrondi CVRPLIB.
+
+`algorithms/plne.py` contient les modèles PLNE et le Branch and Bound avec relaxations HiGHS et coupes de capacité. `solve_with_cbc` fournit une résolution de référence supplémentaire. Les performances exactes dépendent de l’instance, de la formulation et du temps accordé ; il n’existe pas de frontière fixe en nombre de clients.
+
+Le CVRPTW (fenêtres temporelles, interdiction de livrer hors fenêtre et attente autorisée) est une piste d’amélioration avancée, prévue pour une suite éventuelle du projet et non implémentée dans ce livrable. Le trafic dépendant de l’heure nécessiterait aussi des durées d’arc dépendant de l’heure de départ.
