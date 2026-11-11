@@ -421,5 +421,3 @@ def write_and_print_result(best, stats, problem, reference_cost, output_path):
                   f" | load={route['load']:g} | distance={route['distance']:.6f}")
     print(f"Result saved to: {output.resolve()}")
     return result
-
-

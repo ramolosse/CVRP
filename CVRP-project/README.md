@@ -2,59 +2,103 @@
 
 Projet CesiCDP / ADEME : modélisation et résolution du problème de tournées de véhicules avec capacité (CVRP).
 
-## Périmètre actuel
+## Périmètre
 
-Le code traite un dépôt, une flotte homogène limitée, des demandes clients et des coûts d’arcs fixes. Il fournit deux approches :
+Le projet traite un dépôt, une flotte homogène limitée, des demandes connues et des coûts d’arcs fixes. Le projet compare d’abord un algorithme génétique de base (Split glouton), puis son amélioration mémétique (Split optimal et recherche locale). Le mémétique est retenu pour les grandes instances. Le PLNE avec Branch and Bound sert de référence sur les petites instances, lorsque le solveur peut certifier l’optimalité.
 
-- **Algorithme génétique** : métaheuristique destinée aux instances moyennes et grandes.
-- **PLNE** : formulations exactes avec Branch and Bound et résolution de référence par CBC, utiles surtout sur les petites instances.
+Les fenêtres de livraison, l’attente et le trafic dépendant de l’heure ne sont pas implémentés. Les résultats décrivent donc le CVRP classique et ne doivent pas être présentés comme tenant compte du trafic.
 
-Le trafic dépendant de l’heure, les fenêtres de livraison et l’attente ne sont pas implémentés. Le contexte de l’énoncé les mentionne, mais le niveau B CVRP est le périmètre de base attendu. Les résultats actuels ne doivent donc pas être présentés comme tenant compte du trafic.
-
-## Structure
+## Fichiers principaux
 
 ```text
 algorithms/
-  genetic_algorithm.py   # Algorithme génétique et opérateurs
+  genetic_algorithm.py   # GA de base avec Split glouton
+  memetic_algorithm.py   # GA avec Split optimal et recherche locale
+  local_search.py        # Split optimal (Prins) et opérateurs de recherche locale
   plne.py                # PLNE, Branch and Bound, interface CBC
 common.py                # Chargement, coûts et validation CVRP
-main.ipynb               # Démonstration génétique et PLNE
-plne_branch_and_bound.ipynb # Étude du PLNE
+main.ipynb               # Démarche, expériences et interprétation des résultats
+benchmark.py             # Fonctions réutilisables de chargement et d'expérimentation
 livrables/               # Modélisation formelle
-results/                 # Résultats expérimentaux
- tests/                  # Vérifications du PLNE
+data/                    # Instances VRPLIB et solutions de référence
+results/                 # Quelques résultats exportés
 ```
 
-## Lancer les méthodes depuis le notebook
+## Installation et lancement
 
-Ouvrir `main.ipynb` dans Jupyter. Le notebook choisit les instances avec `load_instance`, puis les transmet aux solveurs. Pour lancer le génétique séparément :
+Depuis la racine du projet, installer les dépendances déclarées dans `pyproject.toml` :
 
-```python
-from common import load_instance
-from algorithms.genetic_algorithm import solve
-
-instance = load_instance("data/A-n60-k9.vrp")
-best, stats = solve(instance)
+```bash
+uv sync
 ```
 
-Le module génétique ne choisit ni ne charge les fichiers d’instance. Les paramètres de recherche sont définis au début de `algorithms/genetic_algorithm.py` ; les chemins d’instances et de résultats restent dans le notebook ou le script appelant.
+Lancer ensuite le notebook principal :
 
-## Représentation des solutions
+```bash
+uv run jupyter notebook main.ipynb
+```
 
-Les instances sont chargées dans `common.Instance`. Le dépôt a l’identifiant interne `0`. Une solution est une liste de tournées contenant chacune les clients dans leur ordre de visite, sans le dépôt, par exemple `[[3, 1, 2], [4, 5]]`. Le coût inclut le départ et le retour au dépôt. Les distances `EUC_2D` suivent l’arrondi CVRPLIB.
+Dans Jupyter, exécuter les cellules dans l’ordre avec **Run All**. Le notebook présente d’abord les résultats du GA de base, puis ceux du mémétique, et termine cette partie par une comparaison appariée des gaps. Pour lancer uniquement les expériences, aller à la section 8 ; ses cellules appellent les fonctions réutilisables de `benchmark.py`. Le multi-graines lance 115 recherches et peut prendre plusieurs minutes. Les sorties du notebook sont conservées dans le fichier si celui-ci est enregistré après exécution.
 
-Fonctions communes principales : `load_instance`, `load_solution`, `solution_cost`, `check_solution`, `is_feasible` et `gap`.
+`benchmark.py` fournit des fonctions Python, sans interface en ligne de commande. Pour lancer un benchmark sans ouvrir le notebook, utiliser `uv run python -c` depuis la racine. Les commandes ci-dessous calculent les résultats et les enregistrent dans `results/`.
 
-## PLNE
+### Benchmarks depuis le terminal
 
-`algorithms/plne.py` contient une formulation compacte à deux indices et la formulation indexée par véhicule présentée dans le livrable. Le Branch and Bound utilise les relaxations linéaires HiGHS et peut ajouter des coupes de capacité. `solve_with_cbc` résout le même modèle avec CBC. Ces méthodes exactes ne sont pas adaptées aux instances de plusieurs milliers de clients ; l’algorithme génétique constitue la méthode heuristique retenue pour les instances de taille réaliste.
+Les fonctions `run_*_ga_benchmark` exécutent le GA de base ; `run_*_memetic_benchmark` exécutent la version mémétique. La comparaison appariée conserve les mêmes instances, graines et budgets.
 
-## Modélisation et limites
+Benchmark GA sur les 23 instances, avec une graine :
 
-Le notebook `livrables/Livrable_1_Modelisation_CVRP_ameliore.ipynb` définit les données, la version décisionnelle, la réduction du TSP et le PLNE. La contrainte de progression de charge utilise le terme d’affectation du client suivant afin de désactiver correctement la demande lorsqu’il n’appartient pas au véhicule considéré.
+```powershell
+uv run python -c "from benchmark import run_single_seed_ga_benchmark; df = run_single_seed_ga_benchmark(); print(df.to_string(index=False)); df.to_csv('results/ga_single_seed.csv', index=False)"
+```
 
-Pour étendre le modèle au CVRPTW, il faudra ajouter les heures d’arrivée, les fenêtres temporelles, l’interdiction de servir hors fenêtre et l’attente autorisée. Pour le trafic dépendant de l’heure, les durées d’arc devront dépendre de l’heure de départ et respecter les unités et hypothèses des données routières.
+Benchmark multi-graines (5 graines × 23 instances, soit 115 exécutions) :
 
-## Validation expérimentale à compléter
+```powershell
+uv run python -c "from benchmark import run_multi_seed_ga_benchmark; runs, summary = run_multi_seed_ga_benchmark(); print(summary.to_string()); runs.to_csv('results/ga_multi_seed_runs.csv', index=False); summary.to_csv('results/ga_multi_seed_summary.csv')"
+```
 
-Le livrable final doit présenter au moins 20 instances variées, les gaps par rapport aux solutions de référence, les temps, plusieurs répétitions avec des graines distinctes, des statistiques et une interprétation des limites. Les résultats préexistants du dépôt ne constituent pas à eux seuls ce protocole complet.
+Comparaison GA–PLNE sur les instances d’au plus 30 clients (jusqu’à 5 secondes par méthode) :
+
+```powershell
+uv run python -c "from benchmark import compare_plne_vs_ga; df = compare_plne_vs_ga(); print(df.to_string(index=False)); df.to_csv('results/ga_vs_plne.csv', index=False)"
+```
+
+Test de scalabilité sur des sous-instances Leuven1 de 50 à 500 clients :
+
+```powershell
+uv run python -c "from benchmark import run_scalability_benchmark; df = run_scalability_benchmark(); print(df.to_string(index=False)); df.to_csv('results/scalability.csv', index=False)"
+```
+
+Comparaison appariée GA–mémétique (5 graines × 23 instances, 3 secondes par méthode) :
+
+```powershell
+uv run python -c "from benchmark import compare_ga_vs_memetic; df = compare_ga_vs_memetic(pop_size=30, stagnation=40); print(df.to_string(index=False)); df.to_csv('results/ga_vs_memetic_runs.csv', index=False)"
+```
+
+Analyse du taux de mutation sur `A-n33-k5` :
+
+```powershell
+uv run python -c "from benchmark import run_mutation_sensitivity; df = run_mutation_sensitivity(); print(df.to_string(index=False)); df.to_csv('results/mutation_sensitivity.csv', index=False)"
+```
+
+Chaque commande peut prendre du temps selon l’expérience et la machine. Les fonctions acceptent des paramètres pour réduire le nombre d’instances ou modifier les graines et budgets ; leurs signatures et valeurs par défaut sont documentées dans `benchmark.py`.
+
+## Protocole expérimental du notebook
+
+- **Jeu d’essai** : 23 instances de référence VRPLIB des séries A, B, E et P, de 12 à 79 clients. Ce sont des benchmarks académiques, pas des données de tournées réelles. Les fichiers `.sol` sont des références connues ; ils ne constituent pas tous une preuve d’optimalité.
+- **GA** : une exécution de référence par instance, puis cinq graines (`42`, `123`, `456`, `789`, `1024`) sur chacune des 23 instances. Les résultats comprennent les gaps, coûts, temps, générations, faisabilité, moyenne, médiane et écart-type.
+- **Comparaison exacte** : GA et PLNE sur les instances d’au plus 30 clients, avec une limite maximale de cinq secondes par méthode. Le statut et la borne inférieure du PLNE permettent de distinguer un optimum certifié d’un arrêt sur limite.
+- **Autres essais** : relaxation linéaire, Branch and Bound sur des instances plus grandes, sous-instances Leuven1 de 50 à 500 clients, sensibilité au taux de mutation, convergence et cartes des tournées.
+
+La comparaison appariée à budget égal donne un gap moyen par instance de 19,88 % pour le GA de base et 0,34 % pour le mémétique ; les résultats sont dans `results/ga_vs_memetic_runs.csv` et `results/ga_vs_memetic_summary.csv`. Les résultats exportés précédemment sont préservés avec le préfixe `memetic_`. Les fonctions qui exécutent les expériences sont dans `benchmark.py`; `main.ipynb` les appelle et présente les tableaux, graphiques et interprétations.
+
+Les paramètres, graines et versions logicielles sont regroupés au début de la section expérimentale de `main.ipynb`. Les temps dépendent de la machine. Les tableaux et graphiques sont des sorties d’expérience ; enregistrer le notebook après exécution pour les conserver.
+
+## Représentation des solutions et PLNE
+
+Les instances sont chargées dans `common.Instance`. Le dépôt a l’identifiant interne `0`. Une solution est une liste de tournées sans le dépôt, par exemple `[[3, 1, 2], [4, 5]]`. Le coût inclut le départ et le retour au dépôt. Les distances `EUC_2D` suivent l’arrondi CVRPLIB.
+
+`algorithms/plne.py` contient les modèles PLNE et le Branch and Bound avec relaxations HiGHS et coupes de capacité. `solve_with_cbc` fournit une résolution de référence supplémentaire. Les performances exactes dépendent de l’instance, de la formulation et du temps accordé ; il n’existe pas de frontière fixe en nombre de clients.
+
+Le CVRPTW (fenêtres temporelles, interdiction de livrer hors fenêtre et attente autorisée) est une piste d’amélioration avancée, prévue pour une suite éventuelle du projet et non implémentée dans ce livrable. Le trafic dépendant de l’heure nécessiterait aussi des durées d’arc dépendant de l’heure de départ.

@@ -1,0 +1,9 @@
+algorithm,target_time_s,elapsed_seconds,cost,bks_cost,gap_percent,routes_count,bks_routes,generations,evaluations
+GA (Split Glouton),10.0,10.0,217234.0,192848.0,12.65,208,203,114,4144
+GA (Split Glouton),20.0,20.0,217231.0,192848.0,12.64,208,203,211,7636
+GA (Split Glouton),30.0,27.67,217231.0,192848.0,12.64,208,203,337,12172
+GA (Split Glouton),60.0,26.99,217231.0,192848.0,12.64,208,203,337,12172
+Mémétique (Split DP + Local Search),10.0,10.0,208828.0,192848.0,8.29,207,203,0,10
+Mémétique (Split DP + Local Search),20.0,20.01,205301.0,192848.0,6.46,206,203,0,29
+Mémétique (Split DP + Local Search),30.0,30.0,203560.0,192848.0,5.55,207,203,1,51
+Mémétique (Split DP + Local Search),60.0,60.0,202338.0,192848.0,4.92,205,203,6,130

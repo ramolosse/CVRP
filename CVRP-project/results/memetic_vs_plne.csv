@@ -1,0 +1,9 @@
+instance,n_clients,time_limit_seconds_per_method,reference_cost,ga_cost,ga_gap_reference_percent,ga_elapsed_seconds,plne_status,plne_cost,plne_lower_bound,plne_gap_bound_percent,plne_elapsed_seconds
+B-n31-k5,30,5.0,672.0,672.0,0.0,5.0,optimal,672.0,672.0,0.0,2.643
+E-n13-k4,12,5.0,247.0,247.0,0.0,3.074,optimal,247.0,247.0,0.0,0.081
+E-n22-k4,21,5.0,375.0,375.0,0.0,5.0,optimal,375.0,375.0,0.0,0.108
+E-n30-k3,29,5.0,534.0,534.0,0.0,5.0,time_limit,inf,528.0,inf,5.0
+P-n16-k8,15,5.0,450.0,450.0,0.0,1.326,optimal,450.0,450.0,0.0,0.506
+P-n19-k2,18,5.0,212.0,212.0,0.0,4.497,optimal,212.0,212.0,0.0,0.514
+P-n20-k2,19,5.0,216.0,216.0,0.0,5.0,optimal,216.0,216.0,0.0,0.86
+P-n22-k8,21,5.0,603.0,603.0,0.0,2.871,time_limit,inf,595.0,inf,5.006

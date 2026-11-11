@@ -1,0 +1,6 @@
+n_clients,n_vehicles,cost,feasible,elapsed_seconds,generations
+50,50,6453.0,True,3.0,7
+100,100,11509.0,True,3.0,2
+200,200,18202.0,True,3.001,0
+300,300,26321.0,True,3.0,0
+500,500,39918.0,True,3.0,0
