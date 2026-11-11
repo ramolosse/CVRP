@@ -1,0 +1,63 @@
+﻿
+REPRÉSENTATION D’UNE SOLUTION ET SPLIT 
+
+Un individu contient order, routes et cost. Le chromosome order est une permutation des clients sans dépôt, par exemple [3,1,5,2,6,4]. Seul cet ordre subit les opérations génétiques. greedy_split() le parcourt et ajoute chaque client au véhicule courant. Si sa demande dépasse la capacité restante, une nouvelle tournée commence. Le découpage suit donc la capacité et ne recherche pas les meilleures coupures en distance.
+
+Avec une capacité de 10 et les demandes des clients 1 à 6 égales à [4,3,5,2,4,2], cet ordre donne routes=[[3,1],[5,2,6],[4]], de charges 9, 9 et 2. Cette solution est réalisable si au moins trois véhicules sont autorisés : tous les clients sont visités une fois et chaque charge respecte la capacité. cost est la somme des distances des trois tournées. Avec un dépôt 0, la première tournée est 0 -> 3 -> 1 -> 0. Les indices internes commencent à zéro ; l'export ajoute 1 aux indices et affiche le dépôt aux deux extrémités.
+
+
+
+INITIALISATION, ADAPTATION ET FAISABILITÉ
+
+initialize_population() crée un premier ordre par plus proche voisin et les autres par mélange aléatoire. calculate_fitness() vérifie que le chromosome contient exactement tous les clients, puis applique le Split et additionne les distances, trajets depuis et vers le dépôt compris. La fitness est le coût à minimiser : plus il est faible, meilleur est l'lndividu.
+
+Si l'ordre est invalide ou le Split dépasse la limite de véhicules, le coût devient math.inf. Ces individus peuvent encore produire des descendants, mais ne deviennent pas la meilleure solution réalisable. Avant l'export, validate_solution() vérifie de nouveau les visites, les charges, le nombre de routes et le coût total. Une permutation valide ne garantit pas à elle seule une solution réalisable.
+
+
+SÉLECTION ET ÉLITISME 
+
+select_parent() effectue un tournoi : il tire au hasard TOURNAMENT_SIZE individus avec remise et choisit le moins coûteux. select_parents() répète cette opération pour obtenir deux parents, éventuellement identiques. Ces parents servent à produire des enfants ; gagner un tournoi ne garantit pas une place directe dans la génération suivante.
+
+L'élitisme est distinct : select_elites() conserve directement les ELITE_SIZE meilleurs individus. Avec une population de 100 et 5 élites, la nouvelle génération contient ces 5 élites et 95 enfants évalués. Les élites peuvent également être choisies comme parents.
+
+
+
+CROISEMENT OX 
+
+crossover() utilise OX. Il conserve un segment du parent A, puis remplit les positions restantes selon l'ordre circulaire du parent B, en ignorant les clients déjà présents. Le parcours et le remplissage commencent à droite du segment. Le second enfant échange les rôles des parents. Chaque client reste présent exactement une fois.
+
+Exemple : A=[1,2,3,4,5,6], B=[4,1,6,2,5,3]. En conservant [3,4] aux positions centrales de A, le premier enfant est [6,2,3,4,5,1]. Le croisement se produit avec CROSSOVER_PROBABILITY ; sinon les ordres parentaux sont copiés. Chaque enfant est ensuite réévalué après sa mutation éventuelle.
+
+
+
+MUTATION 
+
+Chaque enfant subit une mutation avec MUTATION_PROBABILITY. mutate() choisit deux positions et l'une de trois opérations, équiprobables : échange, inversion ou insertion. À partir de [1,2,3,4,5,6], en choisissant les positions des clients 2 et 5 :
+- Échange : [1,5,3,4,2,6].
+- Inversion du segment : [1,5,4,3,2,6].
+- Insertion du client 2 à la position choisie plus loin : [1,3,4,5,2,6].
+Ces opérations préservent la permutation, mais ne garantissent ni une amélioration ni le respect du nombre de véhicules après Split. La probabilité concerne chaque enfant, pas chaque gène.
+
+
+
+STRUCTURE DE VOISINAGE 
+
+Le voisinage d'un ordre est l'ensemble des permutations accessibles par une mutation : N(order) = N_swap ∪ N_inversion ∪ N_insertion. L'insertion de ce code déplace un client d'une position plus petite vers une position plus grande.
+
+Chaque nouvel ordre est redécodé par le Split : une petite modification du chromosome peut donc changer l'affectation de plusieurs véhicules. Certains voisins peuvent dépasser la limite de flotte ; ils reçoivent un coût infini. Le programme échantillonne ces voisins au hasard, sans les explorer exhaustivement. OX est une recombinaison de deux parents, distincte de ce voisinage local. Le GA travaille sur une population et n'effectue pas une recherche locale autour d'une seule solution courante.
+
+
+MÉCANISME DE GUIDAGE
+
+Le coût total guide la recherche : les tournois favorisent les individus de faible coût, qui transmettent plus souvent leurs caractéristiques à leurs descendants. Le coût infini défavorise les individus irréalisables. L'élitisme protège les meilleures solutions de la génération, tandis que le croisement et la mutation explorent de nouveaux ordres.
+
+Un enfant n'a pas besoin d'être meilleur que ses parents pour entrer dans la génération suivante. Les places restantes après l'élitisme sont remplies par les enfants évalués, même moins bons ou irréalisables ; la pression de sélection agit ensuite lors des tournois. La mémorisation du meilleur individu rencontré sert à conserver le résultat final, sans orienter directement la création des enfants.
+
+
+
+GÉNÉRATIONS, ARRÊT ET RÉSULTATS 
+
+create_next_generation() conserve les élites, sélectionne des parents, crée et évalue des enfants jusqu'à compléter la population. solve() répète ce cycle. La meilleure solution réalisable est mémorisée dès son évaluation, même si la génération est ensuite interrompue.
+
+check_termination_conditions() arrête la recherche dès que le temps maximal, le nombre maximal de générations ou le nombre de générations sans amélioration significative est atteint. Le temps comprend l'initialisation, mais exclut la lecture des fichiers et l'écriture finale.
+
